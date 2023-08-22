@@ -1,0 +1,10 @@
+{
+  "name": "qt1",
+  "target": "appa",
+  "info": "oro",
+  "ignore": [],
+  "versions": [
+    "qt2",
+    "qt3"
+  ]
+}
