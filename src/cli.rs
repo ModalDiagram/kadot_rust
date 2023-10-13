@@ -1,4 +1,5 @@
 use clap::{Parser,Subcommand};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 struct Cli {
@@ -28,7 +29,8 @@ pub fn parse() {
             super::version::create(&version);
         }
         Commands::Install { version } => {
-            super::version::install(version);
+            let current_path = std::fs::canonicalize(PathBuf::from(".")).unwrap();
+            super::version::install(version, current_path);
         }
     }
 }

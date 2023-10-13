@@ -72,27 +72,57 @@ pub fn create(version: &String) -> bool {
     }
 }
 
-pub fn install(version: &Option<String>) {
-    let current_path = std::fs::canonicalize(PathBuf::from(".")).unwrap();
-
+// install:      installs one of the sub-version
+// version:      name of the version to install. If none, it asks the user
+// current_path: path that contains the sub-version, needed in case of recursion
+pub fn install(version: &Option<String>, current_path: PathBuf) {
+    // we get the config of the whole version
     let config_string = match std::fs::read_to_string(current_path.join(".kadot")) {
         Err(_) => return,
         Ok(config_string) => config_string
     };
-
     let config: Config = serde_json::from_str(&config_string).expect(".kadot is not in a valid format");
 
-    match version {
+    // if a version is Some, we check that it exists, else it asks the user
+    let version_name = match version {
         Some(version_name) => {
             if !super::config::exist_version(&config, &version_name) {
                 println!("Version not found");
                 return;
             }
+            version_name
         }
         None => {
             let versions = config::get_versions(&config);
-            println!("Here are the available versions:");
-            versions.iter().for_each(|subver| print!("{subver},"));
+            println!("Choose one of the available versions:");
+            for (i, subver) in versions.into_iter().enumerate() {
+                println!("{}: {}", i+1, subver);
+            }
+            let input = super::io::prompt_user();
+            let input: usize = input.trim().parse().expect("Wanted a number");
+            match versions.get(input-1) {
+                Some(version_name) => version_name,
+                None => return,
+            }
+        }
+    };
+
+    // we enter the subversion dir and get the .kadot. If it has subversions,
+    // we asks which one to install recursively, else it gets installed
+    let version_path = current_path.join(version_name);
+    if version_path.is_dir() {
+        match std::fs::read_to_string(version_path.join(".kadot")) {
+            Ok(config_string) => {
+                let config: Config = serde_json::from_str(&config_string).expect(".kadot malformed");
+                let versions = config::get_versions(&config);
+                if versions.is_empty() {
+                    config::install_config(config, current_path);
+                }
+                else {
+                    install(&None, version_path);
+                }
+            },
+            Err(_) => return,
         }
     }
 }

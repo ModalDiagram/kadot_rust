@@ -1,4 +1,4 @@
-use std::io::{self, BufRead};
+use std::{io::{self, BufRead}, path::PathBuf};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -43,7 +43,7 @@ pub fn create_config(version: &String, old_config: Option<&Config>) -> Config {
     // if we are in a sub-version, it asks if the target directory is the same
     // as the parent target directory, else it asks for the new one
     if old_config.is_some(){
-        println!("Does this sub-version have the same target? ({}) [y,n]", old_config.unwrap().target);
+        println!("Does this sub-version have the same target? ({}) [y,N]", old_config.unwrap().target);
         assert!(reader.read_line(&mut buffer).is_ok());
         match buffer.as_str() {
             "y\n" | "Y\n" => {
@@ -68,10 +68,17 @@ pub fn create_config(version: &String, old_config: Option<&Config>) -> Config {
     }
 
     // asks for any info of the new version
-    println!("Choose the info:");
+    println!("Any additional info?");
     assert!(reader.read_line(&mut buffer).is_ok());
     new_config.info = String::from(buffer.clone().trim());
     buffer.clear();
 
     return new_config;
+}
+
+pub fn install_config(config: Config, parent_path: PathBuf) {
+    println!("Installing config {}", config.name);
+    println!("Execute the following commands:");
+    println!("cd {}", parent_path.to_str().unwrap());
+    println!("stow -t {} {}", config.target, config.name);
 }
