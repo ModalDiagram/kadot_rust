@@ -1,4 +1,4 @@
-use std::{fs::{create_dir, remove_dir_all}, path::PathBuf, io::{self, BufRead}};
+use std::{fs::create_dir, path::PathBuf};
 use super::config::Config;
 use super::config;
 
@@ -11,65 +11,58 @@ pub fn create(version: &String) -> bool {
     let current_path = std::fs::canonicalize(PathBuf::from(".")).unwrap();
     println!("Creating version: {version} in path {}", current_path.to_str().unwrap());
     let mut config: Config;
-    let config_string = std::fs::read_to_string(current_path.join(".kadot"));
+    let kadot_path = current_path.join(".kadot");
 
-    // if the current directory is a version already, it asks if you want to create
-    // a sub-version
-    if let Ok(config_string) = config_string {
-        let mut buffer = String::with_capacity(2048);
-        config = serde_json::from_str(&config_string).expect(".kadot is not in a valid format");
-        println!("Found current version: {}", config::get_name(&config));
-        println!("Do you wish to create a sub-version (or quit)? [y,N]");
-        buffer.clear();
-        assert!(io::stdin().lock().read_line(&mut buffer).is_ok());
-
-        // creates a sub-version or exits
-        match buffer.as_str() {
+    if !kadot_path.is_file() {
+        println!("No .kadot found in the current directory.");
+        println!("Do you want to create a new branch? [y/N]");
+        match super::io::prompt_user().as_str() {
             "Y\n" | "y\n" => {
-                if config::exist_version(&config, version) {
-                    println!("Sub-version with the same name already exists");
-                    return false;
-                }
-                let version_path = current_path.join(version);
-                println!("scendo in {}", version_path.to_str().unwrap());
-                /* creates the directory of the sub-version */
-                if !version_path.is_dir() {
-                    if let Err(_) = create_dir(&version_path) {
-                        println!("Couldn't create sub-folder");
-                        return false;
-                    }
-                }
-
-                if !version_path.join(".kadot").is_file() {
-                    // creates the config of the new version
-                    let new_config = super::config::create_config(version,  Some(&config));
-                    let json = serde_json::to_string_pretty(&new_config).unwrap();
-                    // creates the .kadot file of the sub-version
-                    std::fs::write(version_path.join(".kadot"), json).expect("Couldn't write to file");
-                }
-
-                // updates the config of the parent version
-                config::add_version(&mut config, version);
+                config = super::config::create_config(None);
                 let json = serde_json::to_string_pretty(&config).unwrap();
-                if let Err(_) = std::fs::write(current_path.join(".kadot"), json) {
-                    println!("Couldn't create .kadot file");
-                    assert!(remove_dir_all(version_path).is_ok());
-                }
-                return false;
-            },
-            _             => return false,
+                std::fs::write(current_path.join(".kadot"), json).expect("Couldn't write .kadot");
+            }
+            _ => return false,
         }
     }
-    // if we aren't in a sub-version, it creates a new config and put it into the
-    // current directory
     else {
-        config = super::config::create_config(version, None);
-        let json = serde_json::to_string_pretty(&config).unwrap();
-        println!("Current path {}", current_path.to_str().unwrap());
-        std::fs::write(current_path.join(".kadot"), json).expect("Couldn't write .kadot");
-
-        return true;
+        let config_string = std::fs::read_to_string(current_path.join(".kadot")).expect("Couldn't read .kadot");
+        config = serde_json::from_str(&config_string).expect(".kadot malformed");
     }
+
+    println!("Creating subversion {}", version);
+    if config::exist_version(&config, version) {
+        println!("Sub-version with the same name already exists");
+        return false;
+    }
+    let version_path = current_path.join(version);
+    /* creates the directory of the sub-version */
+    if !version_path.is_dir() {
+        if let Err(_) = create_dir(&version_path) {
+            println!("Couldn't create sub-folder");
+            return false;
+        }
+    }
+
+    if !version_path.join(".kadot").is_file() {
+        // creates the config of the new version
+        let new_config = super::config::create_config(Some(&config));
+        let json = serde_json::to_string_pretty(&new_config).unwrap();
+        // creates the .kadot file of the sub-version
+        std::fs::write(version_path.join(".kadot"), json).expect("Couldn't write to file");
+    }
+    else {
+        println!("The new version already has a .kadot. Use kadot update if you want to change its info");
+    }
+
+    // updates the config of the parent version
+    config::add_version(&mut config, version);
+    let json = serde_json::to_string_pretty(&config).unwrap();
+    if let Err(_) = std::fs::write(current_path.join(".kadot"), json) {
+        println!("Couldn't create .kadot file");
+        // assert!(remove_dir_all(version_path).is_ok());
+    }
+    return true;
 }
 
 // install:      installs one of the sub-version
@@ -94,7 +87,7 @@ pub fn install(version: &Option<String>, current_path: PathBuf) {
         }
         None => {
             let versions = config::get_versions(&config);
-            println!("Choose one of the available versions:");
+            println!("Choose one of the available versions: [1,{}]", versions.len());
             for (i, subver) in versions.into_iter().enumerate() {
                 println!("{}: {}", i+1, subver);
             }
@@ -116,7 +109,7 @@ pub fn install(version: &Option<String>, current_path: PathBuf) {
                 let config: Config = serde_json::from_str(&config_string).expect(".kadot malformed");
                 let versions = config::get_versions(&config);
                 if versions.is_empty() {
-                    config::install_config(config, current_path);
+                    config::install_config(config, version_name, current_path);
                 }
                 else {
                     install(&None, version_path);
